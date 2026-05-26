@@ -11,8 +11,12 @@ async function createLead(req, res, next) {
 
 async function listLeads(req, res, next) {
   try {
-    const leads = await leadService.listLeads(req.user, req.query);
-    res.json({ success: true, count: leads.length, leads });
+    const result = await leadService.listLeads(req.user, req.query);
+    res.json({
+      success: true,
+      count: result.leads.length,
+      ...result,
+    });
   } catch (err) {
     next(err);
   }
@@ -40,4 +44,22 @@ async function updateLeadStatus(req, res, next) {
   }
 }
 
-module.exports = { createLead, listLeads, assignLead, updateLeadStatus };
+async function bulkAssignLeads(req, res, next) {
+  try {
+    const result = await leadService.bulkAssignLeads(req.user, req.body);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listCallbacks(req, res, next) {
+  try {
+    const result = await leadService.listCallbacks(req.user);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { createLead, listLeads, listCallbacks, assignLead, bulkAssignLeads, updateLeadStatus };

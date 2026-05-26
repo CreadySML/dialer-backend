@@ -4,6 +4,7 @@ const User = require("./User");
 const Team = require("./Team");
 const TeamMember = require("./TeamMember");
 const Lead = require("./Lead");
+const LeadActivity = require("./LeadActivity");
 
 User.hasMany(Team, { foreignKey: "managerId", as: "managedTeams" });
 Team.belongsTo(User, { foreignKey: "managerId", as: "manager" });
@@ -24,14 +25,11 @@ User.belongsToMany(Team, {
 User.hasMany(User, { foreignKey: "createdBy", as: "createdUsers" });
 User.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
 
-User.hasMany(Lead, { foreignKey: "assignedTo", as: "assignedLeads" });
-Lead.belongsTo(User, { foreignKey: "assignedTo", as: "agent" });
+Lead.hasOne(LeadActivity, { foreignKey: "leadId", as: "activity", constraints: false });
+LeadActivity.belongsTo(Lead, { foreignKey: "leadId", as: "lead", constraints: false });
 
-User.hasMany(Lead, { foreignKey: "createdBy", as: "ownedLeads" });
-Lead.belongsTo(User, { foreignKey: "createdBy", as: "owner" });
-
-Team.hasMany(Lead, { foreignKey: "teamId", as: "leads" });
-Lead.belongsTo(Team, { foreignKey: "teamId", as: "team" });
+User.hasMany(LeadActivity, { foreignKey: "assignedTo", as: "assignedActivities" });
+LeadActivity.belongsTo(User, { foreignKey: "assignedTo", as: "agent" });
 
 module.exports = {
   sequelize,
@@ -39,4 +37,5 @@ module.exports = {
   Team,
   TeamMember,
   Lead,
+  LeadActivity,
 };
