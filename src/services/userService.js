@@ -1,3 +1,4 @@
+const { Op } = require("sequelize");
 const { User } = require("../models");
 
 const ROLE_CAN_CREATE = {
@@ -78,4 +79,58 @@ async function getUserById(viewer, id) {
   return user;
 }
 
-module.exports = { createUser, listUsers, getUserById };
+async function updateUser(actor, userId, payload) {
+  const user = await User.findByPk(userId);
+  if (!user) {
+    const err = new Error("User not found");
+    err.status = 404;
+    throw err;
+  }
+
+  // Permission rules:
+  //  - superadmin: can edit anyone
+  //  - manager:    can edit only users they created (own agents)
+  //  - agent:      cannot edit (route also blocks them via requireRole)
+  if (actor.role === "manager" && user.createdBy !== actor.id) {
+    const err = new Error("You can only edit users you created");
+    err.status = 403;
+    throw err;
+  }
+
+  // Whitelist of mutable fields
+  const updates = {};
+  if (payload.name !== undefined && payload.name.trim() !== "") updates.name = payload.name.trim();
+  if (payload.phone !== undefined) updates.phone = payload.phone;
+  if (payload.password) updates.password = payload.password;
+
+  // Email change — validate format + uniqueness
+  if (payload.email !== undefined && payload.email.trim() !== "" && payload.email.trim() !== user.email) {
+    const newEmail = payload.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      const err = new Error("Invalid email format");
+      err.status = 400;
+      throw err;
+    }
+    const taken = await User.findOne({
+      where: { email: newEmail, id: { [Op.ne]: user.id } },
+    });
+    if (taken) {
+      const err = new Error("This email is already used by another user");
+      err.status = 409;
+      throw err;
+    }
+    updates.email = newEmail;
+  }
+  if (payload.isActive !== undefined && actor.role === "superadmin") {
+    updates.isActive = Boolean(payload.isActive);
+  }
+  // Manager can also toggle isActive for own users
+  if (payload.isActive !== undefined && actor.role === "manager") {
+    updates.isActive = Boolean(payload.isActive);
+  }
+
+  await user.update(updates);
+  return user;
+}
+
+module.exports = { createUser, listUsers, getUserById, updateUser };

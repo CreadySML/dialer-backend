@@ -55,7 +55,7 @@ async function bulkAssignLeads(req, res, next) {
 
 async function listCallbacks(req, res, next) {
   try {
-    const result = await leadService.listCallbacks(req.user);
+    const result = await leadService.listCallbacks(req.user, req.query);
     res.json({ success: true, ...result });
   } catch (err) {
     next(err);

@@ -27,4 +27,13 @@ async function getUser(req, res, next) {
   }
 }
 
-module.exports = { createUser, listUsers, getUser };
+async function updateUser(req, res, next) {
+  try {
+    const user = await userService.updateUser(req.user, req.params.id, req.body);
+    res.json({ success: true, user });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { createUser, listUsers, getUser, updateUser };

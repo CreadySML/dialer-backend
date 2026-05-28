@@ -98,6 +98,18 @@ function buildLeadFilters(viewer, filters = {}) {
   if (filters.utmSource) leadWhere.utmSource = { [Op.iLike]: `%${filters.utmSource}%` };
   if (filters.profile) leadWhere.profile = { [Op.iLike]: `%${filters.profile}%` };
 
+  // Free-text search across name / phone / email / first / last
+  if (filters.search) {
+    const q = `%${filters.search.trim()}%`;
+    leadWhere[Op.or] = [
+      { name: { [Op.iLike]: q } },
+      { firstName: { [Op.iLike]: q } },
+      { lastName: { [Op.iLike]: q } },
+      { phone: { [Op.iLike]: q } },
+      { email: { [Op.iLike]: q } },
+    ];
+  }
+
   if (filters.minLoanAmount || filters.maxLoanAmount) {
     const range = {};
     if (filters.minLoanAmount) range[Op.gte] = Number(filters.minLoanAmount);
@@ -197,12 +209,25 @@ async function listLeads(viewer, filters = {}) {
   VALID_STAGES.forEach((s) => { stageCounts[s] = 0; });
   stageRows.forEach((r) => { stageCounts[r.stage] = Number(r.count); });
 
+  // Step 5: Per-agent lead counts (for workload distribution UI).
+  const assignedRows = await LeadActivity.findAll({
+    where: stageScope,
+    attributes: ["assignedTo", [fn("COUNT", col("id")), "count"]],
+    group: ["assignedTo"],
+    raw: true,
+  });
+  const assignedToCounts = {};
+  assignedRows.forEach((r) => {
+    if (r.assignedTo != null) assignedToCounts[r.assignedTo] = Number(r.count);
+  });
+
   return {
     leads: leadRows.map((l) =>
       flattenLead({ ...l.toJSON(), activity: activityMap.get(l.id) })
     ),
     total: count,
     stageCounts,
+    assignedToCounts,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(count / pageSize)),
@@ -423,12 +448,30 @@ async function bulkAssignLeads(actor, { leadIds, filters, agentId, distribute })
  * Returned sorted by nextFollowUpAt asc (nulls last). Frontend buckets them
  * into overdue / today / tomorrow / upcoming / unscheduled.
  */
-async function listCallbacks(viewer) {
+async function listCallbacks(viewer, filters = {}) {
   // Show every row from lead_activity — i.e. any lead that has been
   // assigned / touched / dispositioned. Frontend buckets by nextFollowUpAt
   // (overdue / today / tomorrow / upcoming / unscheduled).
-  const where = {};
-  if (viewer.role === "agent") where.assignedTo = viewer.id;
+  //
+  // Supports filters via buildLeadFilters (shared with listLeads):
+  //   activity-side: stage, disposition, assignedTo
+  //   lead-side:     pincode, loanPurpose, loan/salary ranges
+  const { leadWhere, activityWhere } = buildLeadFilters(viewer, filters);
+
+  // If lead-side filters are set, narrow leadIds via foreign table first
+  let leadIdFilter = null;
+  if (Object.keys(leadWhere).length > 0) {
+    const matched = await Lead.findAll({
+      where: leadWhere,
+      attributes: ["id"],
+      raw: true,
+    });
+    leadIdFilter = matched.map((m) => m.id);
+    if (leadIdFilter.length === 0) return { items: [], total: 0 };
+  }
+
+  const where = { ...activityWhere };
+  if (leadIdFilter) where.leadId = leadIdFilter;
 
   const activities = await LeadActivity.findAll({
     where,
